@@ -114,9 +114,22 @@ ggsave(pall, file="final_results/Figure_Arcos_Appendix1.pdf", width=15, height=5
 
 # lets take a look at residuals
 ggplot(cz2, aes(x=pop, y=res)) +
+  annotate(geom="text", label=paste0("Median population=", median(cz2$pop)),
+           x=median(cz2$pop), y=-1, hjust=-0.05, size=5)+
+  geom_vline(xintercept = median(cz2$pop))+
   geom_point()+
   stat_smooth(method="loess")+
-  scale_x_log10() + annotation_logticks(sides="b")
+  scale_x_log10(breaks=10^(3:7),
+                labels=c(paste0(c(1, 10, 100), "K"),
+                         paste0(c(1, 10), "M"))) + 
+  labs(x="Population", y="Residuals",
+       title="Residuals from linear scaling model")+
+  annotation_logticks(sides="b") +
+  theme_bw() +
+  theme(axis.text=element_text(color="black", size=14),
+        axis.title=element_text(color="black", face="bold", size=14),
+        plot.title =element_text(color="black", face="bold",size=16))
+ggsave("Final_results/Appendix_Residual_Figure.pdf", width=10, height=7.5)
 # residual vs size shows mostly negative residuals in larger cities
 # the trend  starts somewhere between 100 and 200k
 median(cz2$pop)
