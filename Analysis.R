@@ -122,8 +122,7 @@ ggplot(cz2, aes(x=pop, y=res)) +
   scale_x_log10(breaks=10^(3:7),
                 labels=c(paste0(c(1, 10, 100), "K"),
                          paste0(c(1, 10), "M"))) + 
-  labs(x="Population", y="Residuals",
-       title="Residuals from linear scaling model")+
+  labs(x="Population", y="Residuals")+
   annotation_logticks(sides="b") +
   theme_bw() +
   theme(axis.text=element_text(color="black", size=14),
@@ -168,8 +167,6 @@ ggplot(cz, aes(x=pop, y=pills))+
   guides(color=F)+
   labs(x="Population size",
        y="Number of Pills",
-       title="Non-linear Scaling of pill sales",
-       subtitle="Piecewise regression with a spline at the population median",
        tag="")+
   theme_bw() +
   theme(axis.text=element_text(color="black", size=14),
@@ -491,8 +488,6 @@ ggplot(cbsa, aes(x=pop, y=pills))+
   guides(color=F, fill=F)+
   labs(x="Population size",
        y="Number of Pills",
-       title="Non-linear scaling of pill sales",
-       subtitle="Stratified by Type of CBSA (red: micropolitan, blue:metropolitan)",
        tag="")+
   theme_bw() +
   theme(axis.text=element_text(color="black", size=14),
