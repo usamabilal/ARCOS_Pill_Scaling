@@ -4,7 +4,7 @@ library(tidyverse)
 library(data.table)
 library(arcos)
 
-# # get pop by age by fips (source are census pop by age/sex and coutny)
+# # get pop by age by fips (source are census pop [POPEST] by age/sex and county)
 popage<-fread("Other_data/pop_county_age_sex.csv") %>%
   filter(year%in%2006:2014) %>%
   mutate(age_cat=case_when(

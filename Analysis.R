@@ -1,4 +1,3 @@
-# CZ ANALYSIS
 rm(list=ls())
 # general packages
 library(tidyverse)
@@ -12,7 +11,7 @@ library(lspline)
 # mapping packages
 library(ggmap)
 library(sf)
-library(tidycensus) # for the scales shp
+library(tidycensus) # for the states shp
 library(rgdal)
 
 load("Other_data/ARCOS_county_API.rdata")
