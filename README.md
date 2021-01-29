@@ -1,6 +1,7 @@
-# Code for manuscript: Urban scaling of opioid analgesic sales in the United States
+# Urban scaling of opioid analgesic sales in the United States
 **Authors**: Pricila Mullachery & Usama Bilal
-*Under review at PLOS ONE*
+
+*Under review at PLOS ONE (R2)*
 
 Files:
 
