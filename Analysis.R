@@ -13,6 +13,8 @@ library(ggmap)
 library(sf)
 library(tidycensus) # for the states shp
 library(rgdal)
+# package to find best fitting spline knot
+library(segmented)
 
 load("Other_data/ARCOS_county_API.rdata")
 # 2010 CZ crosswalk obtained from https://sites.psu.edu/psucz/data/
@@ -35,6 +37,10 @@ cz<-cz %>% group_by(cz, states) %>% summarise(pills=sum(pills), pop=mean(populat
 cz %>% filter(pills==0)
 # there's a single CZ with 0 pills (~2300 people). We are excluding it
 cz<-cz %>% filter(pills>0)
+# creating a variable with log10 pills and log10 pop (needed for segmented package below)
+cz<-cz %>% mutate(logpills=log10(pills),
+              logpop=log10(pop))
+  
 
 
 # Linear analysis
@@ -113,9 +119,6 @@ ggsave(pall, file="final_results/Figure_Arcos_Appendix1.pdf", width=15, height=5
 
 # lets take a look at residuals
 ggplot(cz2, aes(x=pop, y=res)) +
-  annotate(geom="text", label=paste0("Median population=", median(cz2$pop)),
-           x=median(cz2$pop), y=-1, hjust=-0.05, size=5)+
-  geom_vline(xintercept = median(cz2$pop))+
   geom_point()+
   stat_smooth(method="loess")+
   scale_x_log10(breaks=10^(3:7),
@@ -129,30 +132,39 @@ ggplot(cz2, aes(x=pop, y=res)) +
         plot.title =element_text(color="black", face="bold",size=16))
 ggsave("Final_results/Appendix_Residual_Figure.pdf", width=10, height=7.5)
 # residual vs size shows mostly negative residuals in larger cities
-# the trend  starts somewhere between 100 and 200k
-median(cz2$pop)
-# given that median CZ pop is ~150k, we'll stratify the analysis by whether CZ pop is above or below the median pop
-cz$popcat_median<-cut(cz$pop, quantile(cz$pop, probs=seq(0,1,by=1/2)), include.lowest = T)
-cz %>% group_by(popcat_median) %>% 
+# the trend  starts somewhere around 100k
+
+# we'll find the best fitting knot position
+m<-lm(formula=logpills~logpop, data=cz)
+spline_knot<-10^segmented.lm(m, npsi=1)$psi[2]
+#82k
+
+# we'll stratify the analysis by whether CZ pop is above or below the knot
+cz$popcat<-cut(cz$pop, breaks = c(min(cz$pop), spline_knot, max(cz$pop)), include.lowest = T)
+cz %>% group_by(popcat) %>% 
   group_modify(~{
     lm(log10(pills)~log10(pop), data=.x) %>% 
       tidy %>% 
       filter(term=="log10(pop)")
   })
+# compare AICs
+AIC(lm(log10(pills)~log10(pop), data=cz))
+AIC(lm(log10(pills)~log10(pop)*popcat,data=cz))
+
 
 # New Figure with spline at median
-coef1 <- expression("Scaling Coefificent "~beta == 1.31)
-coef2 <- expression("Scaling Coefificent "~beta == 0.91)
+coef1 <- expression("Scaling Coefificent "~beta == 1.36)
+coef2 <- expression("Scaling Coefificent "~beta == 0.92)
 
 ggplot(cz, aes(x=pop, y=pills))+
+  geom_vline(xintercept = spline_knot, lty=2)+
+  annotate("text", label="Knot at a population of 82,363", 
+           x=spline_knot, y=10^9, hjust=-0.1, vjust=1)+
   geom_point(pch=21, color="black", fill="gray")+
   scale_color_manual(values=c("blue", "red"))+
-  #geom_abline(intercept=0, slope=1, lty=2, color="black")+
-  #stat_smooth(data=cz %>% filter(popcat_median==T), method="lm", color="black", se=F)+ 
-  #stat_smooth(data=cz %>% filter(popcat_median==F), method="lm", color="black", se=F)+ 
-  stat_smooth(#formula=y~qlspline(x, q=.5), 
-    formula=y~lspline(x, knots=median(cz$pop)), 
-    aes(color=popcat_median),
+  stat_smooth(
+    formula=y~lspline(x, knots=spline_knot), 
+    aes(color=popcat),
     method="lm", se=F)+ 
   annotate("text", x = 10^4, y = 10^5, hjust=0.5, vjust=1,
            label = coef1, color = "blue", parse = T, fontface="bold")+
@@ -199,23 +211,23 @@ cwregions<-both %>% group_by(cz, fips) %>% summarise(pop_avg=mean(population)) %
   left_join(cz %>% select(cz, states))
 cz<-cz %>% left_join(cwregions)
 
-cz %>% group_by(Region_Name, popcat_median) %>% 
+cz %>% group_by(Region_Name, popcat) %>% 
   group_modify(~{
     lm(log10(pills)~log10(pop), data=.x) %>% 
       tidy %>% 
       filter(term=="log10(pop)")
   }) %>% 
-  select(Region_Name, popcat_median, estimate) %>% 
-  spread(popcat_median, estimate)
+  select(Region_Name, popcat, estimate) %>% 
+  spread(popcat, estimate)
 
 # Table 1: first unadjusted by region
-row1<-cz %>% group_by(popcat_median) %>% 
+row1<-cz %>% group_by(popcat) %>% 
   group_modify(~{
     lm(log10(pills)~log10(pop), data=.x) %>% 
       tidy %>% 
       filter(term=="log10(pop)")
   }) %>% 
-  select(popcat_median, estimate, std.error) %>% 
+  select(popcat, estimate, std.error) %>% 
   mutate(lci=estimate-1.96*std.error,
          uci=estimate+1.96*std.error,
          coef=paste0(format(estimate, digits=2, nsmall=2),
@@ -224,20 +236,20 @@ row1<-cz %>% group_by(popcat_median) %>%
                      "-",
                      format(uci, digits=2, nsmall=2),
                      ")")) %>% 
-  select(popcat_median, coef) %>% 
-  spread(popcat_median, coef) %>% 
+  select(popcat, coef) %>% 
+  spread(popcat, coef) %>% 
   rename(b1=1,
          b2=2) %>% 
   mutate(model="Unadjusted") %>% 
   select(model, b1, b2)
 # then adjusted by region
-row2<-cz %>% group_by(popcat_median) %>% 
+row2<-cz %>% group_by(popcat) %>% 
   group_modify(~{
     lm(log10(pills)~log10(pop)+Region_Name, data=.x) %>% 
       tidy %>% 
       filter(term=="log10(pop)")
   }) %>% 
-  select(popcat_median, estimate, std.error) %>% 
+  select(popcat, estimate, std.error) %>% 
   mutate(lci=estimate-1.96*std.error,
          uci=estimate+1.96*std.error,
          coef=paste0(format(estimate, digits=2, nsmall=2),
@@ -246,8 +258,8 @@ row2<-cz %>% group_by(popcat_median) %>%
                      "-",
                      format(uci, digits=2, nsmall=2),
                      ")")) %>% 
-  select(popcat_median, coef) %>% 
-  spread(popcat_median, coef) %>% 
+  select(popcat, coef) %>% 
+  spread(popcat, coef) %>% 
   rename(b1=1,
          b2=2) %>% 
   mutate(model="Adjusted for Region") %>% 
@@ -255,15 +267,15 @@ row2<-cz %>% group_by(popcat_median) %>%
 # stratified by region
 row3<-cz %>% group_by(Region_Name) %>% 
   group_modify(~{
-    .x$popcat_median<-cut(.x$pop, 
-                          quantile(.x$pop, probs=seq(0,1,by=1/2)), include.lowest = T)
-    .x %>% group_by(popcat_median) %>% 
+    # .x$popcat<-cut(.x$pop, 
+    #                       quantile(.x$pop, probs=seq(0,1,by=1/2)), include.lowest = T)
+    .x %>% group_by(popcat) %>% 
       group_modify(~{
         lm(log10(pills)~log10(pop), data=.x) %>% 
           tidy %>% 
           filter(term=="log10(pop)")    
       }) %>% 
-      select(popcat_median, estimate, std.error) %>% 
+      select(popcat, estimate, std.error) %>% 
       mutate(lci=estimate-1.96*std.error,
              uci=estimate+1.96*std.error,
              coef=paste0(format(estimate, digits=2, nsmall=2),
@@ -272,8 +284,8 @@ row3<-cz %>% group_by(Region_Name) %>%
                          "-",
                          format(uci, digits=2, nsmall=2),
                          ")")) %>% 
-      select(popcat_median, coef) %>% 
-      spread(popcat_median, coef) %>% 
+      select(popcat, coef) %>% 
+      spread(popcat, coef) %>% 
       rename(b1=1,
              b2=2)
   }) %>% 
@@ -289,16 +301,16 @@ fwrite(t1, file="Final_results/table1.csv")
 
 
 # check when happens when removing the big 3 outliers at the lower end
-cz$exclude_outlier<-(abs(lm(formula=log10(pills)~log10(pop)*popcat_median, data=cz) %>% augment %>% pull(.resid))>=1)
+cz$exclude_outlier<-(abs(lm(formula=log10(pills)~log10(pop)*popcat, data=cz) %>% augment %>% pull(.resid))>=1)
 # excluding
 outlier_table<-cz %>% filter(exclude_outlier==F) %>% 
-  group_by(popcat_median) %>% 
+  group_by(popcat) %>% 
   group_modify(~{
     lm(log10(pills)~log10(pop), data=.x) %>% 
       tidy %>% 
       filter(term=="log10(pop)")
   }) %>% 
-  select(popcat_median, estimate, std.error) %>% 
+  select(popcat, estimate, std.error) %>% 
   mutate(lci=estimate-1.96*std.error,
          uci=estimate+1.96*std.error,
          coef=paste0(format(estimate, digits=2, nsmall=2),
@@ -307,8 +319,8 @@ outlier_table<-cz %>% filter(exclude_outlier==F) %>%
                      "-",
                      format(uci, digits=2, nsmall=2),
                      ")")) %>% 
-  select(popcat_median, coef) %>% 
-  spread(popcat_median, coef) %>% 
+  select(popcat, coef) %>% 
+  spread(popcat, coef) %>% 
   rename(b1=1,
          b2=2) %>% 
   mutate(model="outlier_exclusion",
@@ -331,13 +343,13 @@ popage<-popage %>%
   select(cz, p014, p1564, p65)
 
 age_table<-cz %>% left_join(popage) %>% 
-  group_by(popcat_median) %>% 
+  group_by(popcat) %>% 
   group_modify(~{
     lm(log10(pills)~log10(pop)+p014+p65, data=.x) %>% 
       tidy %>% 
       filter(term=="log10(pop)")
   }) %>% 
-  select(popcat_median, estimate, std.error) %>% 
+  select(popcat, estimate, std.error) %>% 
   mutate(lci=estimate-1.96*std.error,
          uci=estimate+1.96*std.error,
          coef=paste0(format(estimate, digits=2, nsmall=2),
@@ -346,8 +358,8 @@ age_table<-cz %>% left_join(popage) %>%
                      "-",
                      format(uci, digits=2, nsmall=2),
                      ")")) %>% 
-  select(popcat_median, coef) %>% 
-  spread(popcat_median, coef) %>% 
+  select(popcat, coef) %>% 
+  spread(popcat, coef) %>% 
   rename(b1=1,
          b2=2) %>% 
   mutate(model="age_adjusted",
@@ -365,7 +377,7 @@ fwrite(sens, "Final_results//sens_analysis_table.csv")
 # figure 2 (map)
 # create sextiles of residuals
 cz2<-cz
-cz2$res<-lm(formula=log10(pills)~log10(pop)*popcat_median, data=cz2) %>% augment %>% pull(.resid)
+cz2$res<-lm(formula=log10(pills)~log10(pop)*popcat, data=cz2) %>% augment %>% pull(.resid)
 cz2<-cz2 %>% mutate(LM_Code=cz)
 cz2$quant<-as.numeric(cut(cz2$res, breaks=quantile(cz2$res, probs=seq(0, 1, by=1/6)), include.lowest = T))
 quantiles<-quantile(cz2$res, probs=seq(0, 1, by=1/6))

@@ -28,3 +28,4 @@ vignettes/*.pdf
 .Renviron
 .DS_Store
 ARCOS_Pill_Scaling.Rproj
+tests.R
