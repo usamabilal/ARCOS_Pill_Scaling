@@ -184,6 +184,7 @@ ggplot(cz, aes(x=pop, y=pills))+
         axis.title=element_text(color="black", face="bold", size=14),
         plot.title =element_text(color="black", face="bold",size=16))
 ggsave("Final_results/Figure1_ARCOS.pdf", width=10, height=7.5)
+ggsave("Final_results/Figure1_ARCOS.tiff", width=10, height=7.5)
 
 # to complete table 1, get region-specific estimates
 # for the analysis by region, get a crosswalk of states and census regions
@@ -405,6 +406,7 @@ p2<-ggplot()+
   theme_void()
 p2
 ggsave("Final_results/Figure2_ARCOS.pdf", p2, width=12, height=7.5)
+ggsave("Final_results/Figure2_ARCOS.tiff", p2, width=12, height=7.5)
 
 # last, repeat analysis for CBSAs
 # reload dataset
