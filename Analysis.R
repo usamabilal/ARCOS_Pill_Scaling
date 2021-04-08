@@ -46,7 +46,7 @@ cz<-cz %>% mutate(logpills=log10(pills),
 # Linear analysis
 coef<-round(summary(lm(log10(pills)~log10(pop), data=cz))$coefficients[2,1], digits=2)
 coef # 1.08
-temp <- expression("Scaling Coefificent "~beta == 1.08)
+temp <- expression("Scaling Coefficient "~beta == 1.08)
 # create sextiles of residuals for the map and colors for figure; first duplicate dataset to not mess things up
 cz2<-cz
 cz2$res<-lm(formula=log10(pills)~log10(pop), data=cz2) %>% augment %>% pull(.resid)
@@ -153,8 +153,8 @@ AIC(lm(log10(pills)~log10(pop)*popcat,data=cz))
 
 
 # New Figure with spline at median
-coef1 <- expression("Scaling Coefificent "~beta == 1.36)
-coef2 <- expression("Scaling Coefificent "~beta == 0.92)
+coef1 <- expression("Scaling Coefficient "~beta == 1.36)
+coef2 <- expression("Scaling Coefficient "~beta == 0.92)
 
 ggplot(cz, aes(x=pop, y=pills))+
   geom_vline(xintercept = spline_knot, lty=2)+
@@ -477,8 +477,8 @@ cbsa %>% group_by(msa) %>%
   rename(b1=micro, b2=metro) %>% 
   select(type, n,b1, b2) 
 # Figure with spline at metro/micro
-coef1 <- expression("Scaling Coefificent (micropolitan) "~beta == 1.13)
-coef2 <- expression("Scaling Coefificent (metropolitan) "~beta == 0.93)
+coef1 <- expression("Scaling Coefficient (micropolitan) "~beta == 1.13)
+coef2 <- expression("Scaling Coefficient (metropolitan) "~beta == 0.93)
 
 ggplot(cbsa, aes(x=pop, y=pills))+
   geom_point(pch=21, color="black", aes(fill=msa))+
