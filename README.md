@@ -1,7 +1,7 @@
 # Urban scaling of opioid analgesic sales in the United States
 **Authors**: Pricila Mullachery & Usama Bilal
 
-*Under review at PLOS ONE (R2)*
+*Under review at PLOS ONE (R4)*
 
 Files:
 
