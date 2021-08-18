@@ -49,7 +49,7 @@ coef # 1.08
 temp <- expression("Scaling Coefficient "~beta == 1.08)
 # create sextiles of residuals for the map and colors for figure; first duplicate dataset to not mess things up
 cz2<-cz
-cz2$res<-lm(formula=log10(pills)~log10(pop), data=cz2) %>% augment %>% pull(.resid)
+cz2$res<-lm(formula=log10(pills)~log10(pop), data=cz2) %>% augment %>% pull(.std.resid)
 cz2<-cz2 %>% mutate(LM_Code=cz)
 cz2$quant<-as.numeric(cut(cz2$res, breaks=quantile(cz2$res, probs=seq(0, 1, by=1/6)), include.lowest = T))
 quantiles<-quantile(cz2$res, probs=seq(0, 1, by=1/6))
@@ -115,32 +115,52 @@ p2
 # put figures together
 pall<-arrangeGrob(grobs=list(p1, p2), ncol=2, widths=c(4.5, 5.5))
 ggsave(pall, file="final_results/Figure_Arcos_Appendix1.pdf", width=15, height=5)
+ggsave(pall, file="final_results/Figure_Arcos_Appendix1.tiff", width=15, height=5)
 
 
 # lets take a look at residuals
-ggplot(cz2, aes(x=pop, y=res)) +
-  geom_point()+
-  stat_smooth(method="loess")+
+bind_rows(cz2 %>% 
+            mutate(type="Overall"),
+          cz2 %>% 
+            filter(res>(-5)) %>% 
+            mutate(type="Excluding Outliers")) %>% 
+ggplot(aes(x=pop, y=res)) +
+  geom_point(data=. %>% filter(type=="Overall"))+
+  stat_smooth(method="loess", aes(color=type))+
+  scale_color_manual(values=c("red", "blue"))+
   scale_x_log10(breaks=10^(3:7),
                 labels=c(paste0(c(1, 10, 100), "K"),
                          paste0(c(1, 10), "M"))) + 
-  labs(x="Population", y="Residuals")+
+  labs(x="Population", y="Residuals", color="")+
   annotation_logticks(sides="b") +
   theme_bw() +
   theme(axis.text=element_text(color="black", size=14),
         axis.title=element_text(color="black", face="bold", size=14),
-        plot.title =element_text(color="black", face="bold",size=16))
+        plot.title =element_text(color="black", face="bold",size=16),
+        legend.text=element_text(color="black", size=14),
+        legend.position="bottom")
 ggsave("Final_results/Appendix_Residual_Figure.pdf", width=10, height=7.5)
+ggsave("Final_results/Appendix_Residual_Figure.tiff", width=10, height=7.5)
 # residual vs size shows mostly negative residuals in larger cities
 # the trend  starts somewhere around 100k
+
+# check those outliers
+cz2 %>% filter(res<(-5))
+exclude_outlier<-cz2 %>% filter(res<(-5)) %>% pull(cz)
+
 
 # we'll find the best fitting knot position
 m<-lm(formula=logpills~logpop, data=cz)
 spline_knot<-10^segmented.lm(m, npsi=1)$psi[2]
 #82k
+# without outliers
+m<-lm(formula=logpills~logpop, data=cz %>% filter(!cz%in%exclude_outlier))
+spline_knot_nooutlier<-10^segmented.lm(m, npsi=1)$psi[2]
+#82k
 
 # we'll stratify the analysis by whether CZ pop is above or below the knot
 cz$popcat<-cut(cz$pop, breaks = c(min(cz$pop), spline_knot, max(cz$pop)), include.lowest = T)
+cz$popcat_nooutlier<-cut(cz$pop, breaks = c(min(cz$pop), spline_knot_nooutlier, max(cz$pop)), include.lowest = T)
 cz %>% group_by(popcat) %>% 
   group_modify(~{
     lm(log10(pills)~log10(pop), data=.x) %>% 
@@ -150,6 +170,8 @@ cz %>% group_by(popcat) %>%
 # compare AICs
 AIC(lm(log10(pills)~log10(pop), data=cz))
 AIC(lm(log10(pills)~log10(pop)*popcat,data=cz))
+AIC(lm(log10(pills)~log10(pop)+I(log10(pop)^2),data=cz))
+
 
 
 # New Figure with spline at median
@@ -302,7 +324,7 @@ fwrite(t1, file="Final_results/table1.csv")
 
 
 # check when happens when removing the big 3 outliers at the lower end
-cz$exclude_outlier<-(abs(lm(formula=log10(pills)~log10(pop)*popcat, data=cz) %>% augment %>% pull(.resid))>=1)
+cz$exclude_outlier<-(abs(lm(formula=log10(pills)~log10(pop)*popcat, data=cz) %>% augment %>% pull(.std.resid))>=5)
 # excluding
 outlier_table<-cz %>% filter(exclude_outlier==F) %>% 
   group_by(popcat) %>% 
@@ -329,6 +351,34 @@ outlier_table<-cz %>% filter(exclude_outlier==F) %>%
   select(model, n, b1, b2)
 outlier_table
 # superlinearity at <median is weaker, but still clearly superlinear 
+# check when happens when removing the big 3 outliers at the lower end AND we use the new threshold
+cz$exclude_outlier_nooutlier<-(abs(lm(formula=log10(pills)~log10(pop)*popcat_nooutlier, data=cz) %>% augment %>% pull(.std.resid))>=5)
+# excluding
+outlier_table2<-cz %>% filter(exclude_outlier_nooutlier==F) %>% 
+  group_by(popcat_nooutlier) %>% 
+  group_modify(~{
+    lm(log10(pills)~log10(pop), data=.x) %>% 
+      tidy %>% 
+      filter(term=="log10(pop)")
+  }) %>% 
+  select(popcat_nooutlier, estimate, std.error) %>% 
+  mutate(lci=estimate-1.96*std.error,
+         uci=estimate+1.96*std.error,
+         coef=paste0(format(estimate, digits=2, nsmall=2),
+                     " (",
+                     format(lci, digits=2, nsmall=2),
+                     "-",
+                     format(uci, digits=2, nsmall=2),
+                     ")")) %>% 
+  select(popcat_nooutlier, coef) %>% 
+  spread(popcat_nooutlier, coef) %>% 
+  rename(b1=1,
+         b2=2) %>% 
+  mutate(model="outlier_exclusion_2",
+         n=sum(!cz$exclude_outlier_nooutlier)) %>% 
+  select(model, n, b1, b2)
+outlier_table2
+# superlinearity at <median is even weaker, but still clearly superlinear 
   
 # check whether esults change after age adjustment what happens when doing age adjustment
 load("Other_data/pop_by_age.rdata")
@@ -371,14 +421,14 @@ age_table
 # Sensitivity Table
 sens<-t1 %>% filter(model=="Unadjusted") %>%
   mutate(n=as.numeric(n)) %>%
-  bind_rows(age_table, outlier_table)
+  bind_rows(age_table, outlier_table, outlier_table2)
 sens
 fwrite(sens, "Final_results//sens_analysis_table.csv")
 
 # figure 2 (map)
 # create sextiles of residuals
 cz2<-cz
-cz2$res<-lm(formula=log10(pills)~log10(pop)*popcat, data=cz2) %>% augment %>% pull(.resid)
+cz2$res<-lm(formula=log10(pills)~log10(pop)*popcat, data=cz2) %>% augment %>% pull(.std.resid)
 cz2<-cz2 %>% mutate(LM_Code=cz)
 cz2$quant<-as.numeric(cut(cz2$res, breaks=quantile(cz2$res, probs=seq(0, 1, by=1/6)), include.lowest = T))
 quantiles<-quantile(cz2$res, probs=seq(0, 1, by=1/6))
@@ -463,7 +513,7 @@ cbsa %>% filter(pills==0)
 summary(cbsa)
 
 # get residuals
-cbsa$res<-lm(formula=log10(pills)~log10(pop), data=cbsa) %>% augment %>% pull(.resid)
+cbsa$res<-lm(formula=log10(pills)~log10(pop), data=cbsa) %>% augment %>% pull(.std.resid)
 
 cbsa %>% group_by(msa) %>% 
   group_modify(~{
@@ -507,3 +557,4 @@ ggplot(cbsa, aes(x=pop, y=pills))+
         axis.title=element_text(color="black", face="bold", size=14),
         plot.title =element_text(color="black", face="bold",size=16))
 ggsave("Final_results/AppendixFigure2.pdf", width=10, height=7.5)
+ggsave("Final_results/AppendixFigure2.tiff", width=10, height=7.5)
